@@ -1,0 +1,83 @@
+name: Test by Dogfood
+
+on:
+  workflow_dispatch:
+    inputs:
+      flags:
+        description: "flags forwared to forge +release"
+        default: ""
+        type: string
+  workflow_call:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-forge-against-zigcc:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+        nim-version:
+          - "stable"
+        zig-version:
+          - "latest"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: ${{ matrix.nim-version }}
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ matrix.zig-version }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: "enthus1ast/zigcc"
+          path: "zigcc"
+          fetch-depth: 0
+
+      - name: Build Zigcc wrapper
+        run: |
+          cd zigcc
+          nimble build
+          cd ..
+          echo "$GITHUB_WORKSPACE/zigcc" >> $GITHUB_PATH
+
+      - uses: actions/checkout@v4
+        with:
+          repository: "daylinmorgan/forge"
+          path: "forge"
+          fetch-depth: 0
+
+      - name: Bootstrap with nimble
+        run: |
+          cd forge
+          nimble install -Y
+          cd ..
+
+      - name: Build FreeBSD artifacts with Zigcc wrapper
+        run: |
+          cd forge
+          nimble setup -l
+          nimble cc --cpu:amd64 --os:FreeBSD --cc:clang \
+            --clang.exe=zigcc --clang.linkerexe=zigcc \
+            --clang.cpp.exe=zigcpp --clang.cpp.linkerexe=zigcpp \
+            --passC="-target x86_64-freebsd-none" --passL="-target x86_64-freebsd-none" \
+            -d:release src/forge
+          cd ..
+
+      - name: Generate FreeBSD artifacts with Forge
+        run: |
+          cd forge
+          nimble setup -l
+          ./bin/forge +release --verbose --target,=x86_64-freebsd-none --bin src/forge --no-config --nimble
+          cd ..
