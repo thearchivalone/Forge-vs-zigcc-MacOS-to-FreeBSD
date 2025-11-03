@@ -54,8 +54,9 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          repository: "daylinmorgan/forge"
+          repository: "thearchivalone/forge"
           path: "forge"
+          ref: "new-macos-freebsd-fix"
           fetch-depth: 0
 
       - name: Bootstrap with nimble
